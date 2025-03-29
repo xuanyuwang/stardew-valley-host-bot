@@ -1,0 +1,10 @@
+{
+  "Name": "Host Bot",
+  "Author": "xuanyu",
+  "Version": "0.1.0",
+  "Description": "auto the host",
+  "UniqueID": "xuanyu.Host_Bot",
+  "EntryDll": "hostBot.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
