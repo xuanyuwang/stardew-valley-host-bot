@@ -26,6 +26,8 @@ namespace hostBot
         {
             helper.ConsoleCommands.Add("hostbot", "Toggles bot mode of the host", this.ToggleHostBotMode);
             helper.ConsoleCommands.Add("host_goto_bed", "The hostbot will go to bed", this.GoToBed);
+            helper.ConsoleCommands.Add("pause-world", "Pause the world", this.PauseWorld);
+            helper.ConsoleCommands.Add("resume-world", "Pause the world", this.ResumeWorld);
 
             helper.Events.GameLoop.SaveCreating += (sender, args) => { Monitor.Log("Save Creating", LogLevel.Info); };
             helper.Events.GameLoop.SaveCreated += (sender, args) => { Monitor.Log("Save Created", LogLevel.Info); };
@@ -44,15 +46,23 @@ namespace hostBot
                 Monitor.Log("Day Ending", LogLevel.Info);
                 this.DayEnding = true;
             };
-            helper.Events.GameLoop.OneSecondUpdateTicking += (sender, args) => { CloseShippingMenu(); };
+            helper.Events.GameLoop.OneSecondUpdateTicking += (sender, args) =>
+            {
+                CloseShippingMenu();
+                CloseAnyBlockingMenus();
+            };
+            helper.Events.GameLoop.TimeChanged += (sender, args) =>
+            {
+                AutoGoToBed();
+            };
 
             // Resume the world when there is a remote player
             helper.Events.Multiplayer.PeerConnected += (sender, args) =>
             {
                 Monitor.Log("PeerConnected", LogLevel.Info);
-                if (this.IsHostBotMode && Context.HasRemotePlayers)
+                if (Context.HasRemotePlayers)
                 {
-                    Game1.netWorldState.Value.IsPaused = false;
+                    ResumeWorld("", new[] { "" });
                 }
             };
 
@@ -60,13 +70,37 @@ namespace hostBot
             helper.Events.Multiplayer.PeerDisconnected += (sender, args) =>
             {
                 Monitor.Log("PeerDisconnected", LogLevel.Info);
-                if (this.IsHostBotMode && !Context.HasRemotePlayers)
+                if (!Context.HasRemotePlayers)
                 {
-                    Game1.netWorldState.Value.IsPaused = false;
+                    PauseWorld("", new[] { "" });
                 }
             };
         }
 
+        private void PauseWorld(string command, string[] args)
+        {
+            Monitor.Log("Pause the world", LogLevel.Info);
+            Game1.netWorldState.Value.IsPaused = true;
+        }
+
+        private void ResumeWorld(string command, string[] args)
+        {
+            Monitor.Log("Resume the world", LogLevel.Info);
+            Game1.netWorldState.Value.IsPaused = false;
+        }
+
+        private void AutoGoToBed()
+        {
+            var currentTime = Game1.timeOfDay;
+            // if (this.IsHostBotMode && Context.HasRemotePlayers)
+            if (this.IsHostBotMode)
+            {
+                if (currentTime >= 2200)
+                {
+                    GoToBed("", new []{""});
+                }
+            }
+        }
 
         /// <summary>
         /// Try to close the shipping menu after the DayEnding
@@ -90,6 +124,22 @@ namespace hostBot
                             menu.receiveLeftClick(okButton.bounds.Center.X, okButton.bounds.Center.Y, true);
                         }
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Try to close any non-shipping-menu after a day ending
+        /// </summary>
+        private void CloseAnyBlockingMenus()
+        {
+            if (this.IsHostBotMode && this.DayEnding)
+            {
+                if (Game1.activeClickableMenu != null && Game1.activeClickableMenu.IsActive() && Game1.activeClickableMenu.readyToClose() &&
+                    Game1.activeClickableMenu is not ShippingMenu)
+                {
+                    Monitor.Log("A menu is blocking after day ending. Closing it", LogLevel.Info);
+                    Game1.activeClickableMenu.exitThisMenu();
                 }
             }
         }
@@ -155,6 +205,10 @@ namespace hostBot
                     Game1.options.pauseWhenOutOfFocus = true;
                 }
             }
+        }
+
+        private void parseChatMessage(string command, string[] args)
+        {
         }
     }
 }
