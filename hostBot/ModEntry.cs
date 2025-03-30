@@ -88,7 +88,7 @@ namespace hostBot
             var label = pause ? "paused" : "resumed";
             var message = $"The world is ${label}";
             Monitor.Log(message, LogLevel.Info);
-            Game1.chatBox.addMessage(message, Color.Yellow);
+            MultiplayerChatMessage(message);
         }
 
         private void AutoGoToBed()
@@ -175,7 +175,7 @@ namespace hostBot
             var (x, y) = GetBedCoordinates();
             Game1.warpFarmer("Farmhouse", x, y, false);
             this.Helper.Reflection.GetMethod(Game1.currentLocation, "startSleep").Invoke();
-            Game1.chatBox.addMessage("我先睡了，晚安玛卡巴卡", Color.Yellow);
+            MultiplayerChatMessage("我先睡了，晚安玛卡巴卡");
         }
 
         /// <summary>
@@ -188,7 +188,7 @@ namespace hostBot
         {
             if (args.Length == 0)
             {
-                Game1.chatBox.addMessage("the host bot will sleep immediately", Color.Yellow);
+                MultiplayerChatMessage("the host bot will sleep immediately");
                 Sleep();
                 return;
             }
@@ -197,14 +197,14 @@ namespace hostBot
             switch (arg)
             {
                 case "no":
-                    Game1.chatBox.addMessage("the host bot will NOT auto sleep", Color.Yellow);
+                    MultiplayerChatMessage("the host bot will NOT auto sleep");
                     _isAutoSleep = false;
                     break;
                 default:
                     var validTime = arg.Length == 4 && arg.All(char.IsDigit);
                     if (validTime)
                     {
-                        Game1.chatBox.addMessage($"the host bot will auto sleep at {arg}", Color.Yellow);
+                        MultiplayerChatMessage($"the host bot will auto sleep at {arg}");
                         _autoSleepTime = int.Parse(arg);
                         _isAutoSleep = true;
                     }
@@ -262,17 +262,17 @@ namespace hostBot
             var status = targetStatus ? "on" : "off";
             var message = $"The host bot mode is now {status}.";
             this.Monitor.Log(message, LogLevel.Info);
-            Game1.chatBox.addMessage(message, Color.Yellow);
+            Game1.chatBox.globalInfoMessage(message);
         }
 
         private void TryRunChatMessage()
         {
-            if(!Context.IsWorldReady) return;
-            if(Game1.chatBox.messages.Count == 0) return;
+            if (!Context.IsWorldReady) return;
+            if (Game1.chatBox.messages.Count == 0) return;
 
             var lastMessage = Game1.chatBox.messages.Last();
             var plainText = ChatMessage.makeMessagePlaintext(lastMessage.message, false);
-            if(plainText == _lastChatMessage) return;
+            if (plainText == _lastChatMessage) return;
 
             _lastChatMessage = plainText;
             var (command, args) = ParseChatMessage(plainText);
@@ -286,16 +286,21 @@ namespace hostBot
         {
             Monitor.Log(chatMessage, LogLevel.Info);
             var trimmedMessage = chatMessage.Trim();
-            if(trimmedMessage.Length == 0) return (null, null);
+            if (trimmedMessage.Length == 0) return (null, null);
             Monitor.Log($"trimmed message {chatMessage}", LogLevel.Info);
-            
+
             var splitMessages = trimmedMessage.Split("!!");
             if (splitMessages.Length == 1) return (null, null);
-            
+
             var command = splitMessages[1];
             Monitor.Log($"command from message {command}", LogLevel.Info);
             var commandParts = command.Split(' ');
             return (commandParts[0], commandParts.Skip(1).ToArray());
+        }
+
+        private void MultiplayerChatMessage(string message)
+        {
+            Game1.chatBox.globalInfoMessage(message);
         }
     }
 }
