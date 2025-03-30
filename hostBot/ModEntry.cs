@@ -13,6 +13,8 @@ namespace hostBot
     public class ModEntry : Mod
     {
         private bool IsHostBotMode;
+        private bool IsAutoSleep;
+        private int AutoSleepTime = 2200;
 
         // game loop status
         private bool DayEnding;
@@ -24,10 +26,7 @@ namespace hostBot
         /// <param name="helper">Provides simplified APIs for writing mods.</param>
         public override void Entry(IModHelper helper)
         {
-            helper.ConsoleCommands.Add("hostbot", "Toggles bot mode of the host", this.ToggleHostBotMode);
-            helper.ConsoleCommands.Add("host_goto_bed", "The hostbot will go to bed", this.GoToBed);
-            helper.ConsoleCommands.Add("pause-world", "Pause the world", this.PauseWorld);
-            helper.ConsoleCommands.Add("resume-world", "Pause the world", this.ResumeWorld);
+            helper.ConsoleCommands.Add("hostbot", "Host bot commands", this.HostBotCommands);
 
             helper.Events.GameLoop.SaveCreating += (sender, args) => { Monitor.Log("Save Creating", LogLevel.Info); };
             helper.Events.GameLoop.SaveCreated += (sender, args) => { Monitor.Log("Save Created", LogLevel.Info); };
@@ -51,10 +50,7 @@ namespace hostBot
                 CloseShippingMenu();
                 CloseAnyBlockingMenus();
             };
-            helper.Events.GameLoop.TimeChanged += (sender, args) =>
-            {
-                AutoGoToBed();
-            };
+            helper.Events.GameLoop.TimeChanged += (sender, args) => { AutoGoToBed(); };
 
             // Resume the world when there is a remote player
             helper.Events.Multiplayer.PeerConnected += (sender, args) =>
@@ -62,7 +58,9 @@ namespace hostBot
                 Monitor.Log("PeerConnected", LogLevel.Info);
                 if (Context.HasRemotePlayers)
                 {
-                    ResumeWorld("", new[] { "" });
+                    PauseWorld(false);
+                    this.HostBotCommands("", new string[]{"on"});
+                    this.HostBotCommands("", new string[]{"sleep", AutoSleepTime.ToString()});
                 }
             };
 
@@ -72,32 +70,31 @@ namespace hostBot
                 Monitor.Log("PeerDisconnected", LogLevel.Info);
                 if (!Context.HasRemotePlayers)
                 {
-                    PauseWorld("", new[] { "" });
+                    PauseWorld(true);
+                    this.HostBotCommands("", new string[]{"off"});
+                    this.HostBotCommands("", new string[]{"sleep", "no"});
                 }
             };
         }
 
-        private void PauseWorld(string command, string[] args)
+        private void PauseWorld(bool pause)
         {
-            Monitor.Log("Pause the world", LogLevel.Info);
-            Game1.netWorldState.Value.IsPaused = true;
-        }
-
-        private void ResumeWorld(string command, string[] args)
-        {
-            Monitor.Log("Resume the world", LogLevel.Info);
-            Game1.netWorldState.Value.IsPaused = false;
+            Game1.netWorldState.Value.IsPaused = pause;
+            
+            var label = pause ? "paused" : "resumed";
+            var message = $"The world is ${label}";
+            Monitor.Log(message, LogLevel.Info);
+            Game1.chatBox.addMessage(message, Color.Yellow);
         }
 
         private void AutoGoToBed()
         {
             var currentTime = Game1.timeOfDay;
-            // if (this.IsHostBotMode && Context.HasRemotePlayers)
-            if (this.IsHostBotMode)
+            if (this.IsAutoSleep)
             {
-                if (currentTime >= 2200)
+                if (currentTime >= AutoSleepTime)
                 {
-                    GoToBed("", new []{""});
+                    GoToBed(new string[]{});
                 }
             }
         }
@@ -107,7 +104,7 @@ namespace hostBot
         /// </summary>
         private void CloseShippingMenu()
         {
-            if (this.IsHostBotMode && this.DayEnding)
+            if (this.IsAutoSleep && this.DayEnding)
             {
                 if (Game1.activeClickableMenu is ShippingMenu)
                 {
@@ -133,9 +130,10 @@ namespace hostBot
         /// </summary>
         private void CloseAnyBlockingMenus()
         {
-            if (this.IsHostBotMode && this.DayEnding)
+            if (this.IsAutoSleep && this.DayEnding)
             {
-                if (Game1.activeClickableMenu != null && Game1.activeClickableMenu.IsActive() && Game1.activeClickableMenu.readyToClose() &&
+                if (Game1.activeClickableMenu != null && Game1.activeClickableMenu.IsActive() &&
+                    Game1.activeClickableMenu.readyToClose() &&
                     Game1.activeClickableMenu is not ShippingMenu)
                 {
                     Monitor.Log("A menu is blocking after day ending. Closing it", LogLevel.Info);
@@ -144,7 +142,7 @@ namespace hostBot
             }
         }
 
-        private (int, int) GetBetCoordinates()
+        private (int, int) GetBedCoordinates()
         {
             int bedX, bedY;
             var houseUpgradeLevel = Game1.player.HouseUpgradeLevel;
@@ -168,43 +166,73 @@ namespace hostBot
             return (bedX, bedY);
         }
 
-        private void GoToBed(string command, string[] args)
+        private void Sleep()
         {
-            Game1.chatBox.addInfoMessage("The host bot is going to bed.");
-            var (x, y) = GetBetCoordinates();
+            var (x, y) = GetBedCoordinates();
             Game1.warpFarmer("Farmhouse", x, y, false);
             this.Helper.Reflection.GetMethod(Game1.currentLocation, "startSleep").Invoke();
-            Game1.chatBox.addInfoMessage("The host bot mode is now sleeping.");
+            Game1.chatBox.addMessage("我先睡了，晚安玛卡巴卡", Color.Yellow);
         }
 
-        // toggles the bot mode on/off
-        private void ToggleHostBotMode(string command, string[] args)
+        /// <summary>
+        /// When no arg is provided, the host will sleep
+        /// When "no" is provided, the host will not auto sleep
+        /// When "hhmm" is provided, the host will auto sleep after that time
+        /// </summary>
+        /// <param name="args"></param>
+        private void GoToBed(string[] args)
         {
-            if (Context.IsWorldReady)
+            var arg = args[0];
+            switch (arg)
             {
-                if (!IsHostBotMode)
-                {
-                    IsHostBotMode = true;
-                    this.Monitor.Log("Host bot mode is now enabled.", LogLevel.Info);
-                    Game1.chatBox.addInfoMessage("The host bot mode is now enabled.");
-
-                    Game1.displayHUD = true;
-                    Game1.addHUDMessage(new HUDMessage("Host bot mode is on"));
-
-                    Game1.options.pauseWhenOutOfFocus = false;
-                }
-                else
-                {
-                    IsHostBotMode = false;
-                    this.Monitor.Log("Host bot mode is now disabled.", LogLevel.Info);
-                    Game1.chatBox.addInfoMessage("The host bot mode is now disabled.");
-
-                    Game1.displayHUD = false;
-                    Game1.addHUDMessage(new HUDMessage("Host bot mode is off"));
-
-                    Game1.options.pauseWhenOutOfFocus = true;
-                }
+                case null:
+                    Sleep();
+                    break;
+                case "no":
+                    IsAutoSleep = false;
+                    break;
+                default:
+                    var validTime = arg.Length == 4 && arg.All(char.IsDigit);
+                    if (validTime)
+                    {
+                        AutoSleepTime = int.Parse(arg);
+                    }
+                    break;
             }
+        }
+
+        private void HostBotCommands(string command, string[] args)
+        {
+            var subcommand = args[0];
+            var subArgs = args.Skip(1).ToArray();
+            switch (subcommand.ToLower())
+            {
+                case "sleep":
+                    GoToBed(subArgs);
+                    break;
+                case "on":
+                    ToggleHostBotMode(true);
+                    break;
+                case "off":
+                    ToggleHostBotMode(false);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Set the bot mode on/off. If targetStatus is True, set the bot mode to on. Otherwise, set the bot mode to off.
+        /// </summary>
+        /// <param name="targetStatus"></param>
+        private void ToggleHostBotMode(bool targetStatus)
+        {
+            if (!Context.IsWorldReady) return;
+            if (IsHostBotMode == targetStatus) return;
+            
+            IsHostBotMode = targetStatus;
+            var status = targetStatus ? "on" : "off";
+            var message = $"The host bot mode is now {status}.";
+            this.Monitor.Log(message, LogLevel.Info);
+            Game1.chatBox.addMessage(message, Color.Yellow);
         }
 
         private void parseChatMessage(string command, string[] args)
