@@ -32,7 +32,22 @@ namespace hostBot
             helper.Events.GameLoop.SaveCreated += (sender, args) => { Monitor.Log("Save Created", LogLevel.Info); };
             helper.Events.GameLoop.Saving += (sender, args) => { Monitor.Log("Saving", LogLevel.Info); };
             helper.Events.GameLoop.Saved += (sender, args) => { Monitor.Log("Saved", LogLevel.Info); };
-            helper.Events.GameLoop.SaveLoaded += (sender, args) => { Monitor.Log("Save Loaded", LogLevel.Info); };
+            helper.Events.GameLoop.SaveLoaded += (sender, args) =>
+            {
+                Monitor.Log("Save Loaded", LogLevel.Info);
+                Game1.chatBox.chatBox.OnEnterPressed += (sender) =>
+                {
+                    Monitor.Log("sender's text: " + sender.Text, LogLevel.Info);
+                    if (sender is ChatTextBox chatTextBox)
+                    {
+                        if (chatTextBox.finalText.Count > 0)
+                        {
+                            Monitor.Log("final text: " + ChatMessage.makeMessagePlaintext(chatTextBox.finalText, false),
+                                LogLevel.Info);
+                        }
+                    }
+                };
+            };
 
             // set / unset DayEnding
             helper.Events.GameLoop.DayStarted += (sender, args) =>
@@ -59,8 +74,8 @@ namespace hostBot
                 if (Context.HasRemotePlayers)
                 {
                     PauseWorld(false);
-                    this.HostBotCommands("", new string[]{"on"});
-                    this.HostBotCommands("", new string[]{"sleep", AutoSleepTime.ToString()});
+                    this.HostBotCommands("", new string[] { "on" });
+                    this.HostBotCommands("", new string[] { "sleep", AutoSleepTime.ToString() });
                 }
             };
 
@@ -71,8 +86,8 @@ namespace hostBot
                 if (!Context.HasRemotePlayers)
                 {
                     PauseWorld(true);
-                    this.HostBotCommands("", new string[]{"off"});
-                    this.HostBotCommands("", new string[]{"sleep", "no"});
+                    this.HostBotCommands("", new string[] { "off" });
+                    this.HostBotCommands("", new string[] { "sleep", "no" });
                 }
             };
         }
@@ -80,7 +95,7 @@ namespace hostBot
         private void PauseWorld(bool pause)
         {
             Game1.netWorldState.Value.IsPaused = pause;
-            
+
             var label = pause ? "paused" : "resumed";
             var message = $"The world is ${label}";
             Monitor.Log(message, LogLevel.Info);
@@ -94,7 +109,7 @@ namespace hostBot
             {
                 if (currentTime >= AutoSleepTime)
                 {
-                    GoToBed(new string[]{});
+                    GoToBed(new string[] { });
                 }
             }
         }
@@ -182,29 +197,55 @@ namespace hostBot
         /// <param name="args"></param>
         private void GoToBed(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Game1.chatBox.addMessage("the host bot will sleep immediately", Color.Yellow);
+                Sleep();
+                return;
+            }
+
             var arg = args[0];
             switch (arg)
             {
-                case null:
-                    Sleep();
-                    break;
                 case "no":
+                    Game1.chatBox.addMessage("the host bot will NOT auto sleep", Color.Yellow);
                     IsAutoSleep = false;
                     break;
                 default:
                     var validTime = arg.Length == 4 && arg.All(char.IsDigit);
                     if (validTime)
                     {
+                        Game1.chatBox.addMessage($"the host bot will auto sleep at {arg}", Color.Yellow);
                         AutoSleepTime = int.Parse(arg);
+                        IsAutoSleep = true;
                     }
+
                     break;
             }
         }
 
         private void HostBotCommands(string command, string[] args)
         {
+            Monitor.Log($"command: {command}", LogLevel.Info);
+
+            if (args.Length == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                Monitor.Log($"args {i}: {args[i]}", LogLevel.Info);
+            }
+
             var subcommand = args[0];
+            Monitor.Log($"subcommand: {subcommand}", LogLevel.Info);
             var subArgs = args.Skip(1).ToArray();
+            for (int i = 0; i < subArgs.Length; i++)
+            {
+                Monitor.Log($"subArgs {i}: {subArgs[i]}", LogLevel.Info);
+            }
+
             switch (subcommand.ToLower())
             {
                 case "sleep":
@@ -227,7 +268,7 @@ namespace hostBot
         {
             if (!Context.IsWorldReady) return;
             if (IsHostBotMode == targetStatus) return;
-            
+
             IsHostBotMode = targetStatus;
             var status = targetStatus ? "on" : "off";
             var message = $"The host bot mode is now {status}.";
