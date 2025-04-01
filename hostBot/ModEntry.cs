@@ -19,6 +19,9 @@ namespace hostBot
         private int _autoSleepTime = 2200;
         private string? _lastChatMessage;
 
+        private string _goodNightMessage = "我先睡了，晚安玛卡巴卡";
+        private Dictionary<string, int > _dailyMessages = new Dictionary<string, int >();
+
         // game loop status
         private bool _dayEnding;
 
@@ -42,6 +45,9 @@ namespace hostBot
             {
                 Monitor.Log("Day Started", LogLevel.Info);
                 this._dayEnding = false;
+                
+                this._dailyMessages.Clear();
+                this._dailyMessages.Add(_goodNightMessage, 1);
             };
             helper.Events.GameLoop.DayEnding += (sender, args) =>
             {
@@ -74,13 +80,18 @@ namespace hostBot
                 Monitor.Log("PeerDisconnected", LogLevel.Info);
                 if (!Context.HasRemotePlayers)
                 {
+                    Monitor.Log("There is no other remote player", LogLevel.Info);
                     PauseWorld(true);
                     this.HostBotCommands("", new string[] { "off" });
                     this.HostBotCommands("", new string[] { "sleep", "no" });
                 }
+                else
+                {
+                    Monitor.Log("There are still other remote players", LogLevel.Info);
+                }
             };
         }
-
+        
         private void PauseWorld(bool pause)
         {
             Game1.netWorldState.Value.IsPaused = pause;
@@ -175,7 +186,7 @@ namespace hostBot
             var (x, y) = GetBedCoordinates();
             Game1.warpFarmer("Farmhouse", x, y, false);
             this.Helper.Reflection.GetMethod(Game1.currentLocation, "startSleep").Invoke();
-            MultiplayerChatMessage("我先睡了，晚安玛卡巴卡");
+            MultiplayerDailyChatMessage(this._goodNightMessage);
         }
 
         /// <summary>
@@ -296,6 +307,16 @@ namespace hostBot
             Monitor.Log($"command from message {command}", LogLevel.Info);
             var commandParts = command.Split(' ');
             return (commandParts[0], commandParts.Skip(1).ToArray());
+        }
+
+        private void MultiplayerDailyChatMessage(string message)
+        {
+            if(!this._dailyMessages.ContainsKey(message)) return;
+            
+            var counter = _dailyMessages[message];
+            if(counter < 1) return;
+            _dailyMessages[message] = counter - 1;
+            MultiplayerChatMessage(message);
         }
 
         private void MultiplayerChatMessage(string message)
